@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ITS Files (iOS / web)</title>
+<style>
+:root{--bg:#fff;--fg:#222;--card:#f1f1f1;--bd:#ccc}
+@media (prefers-color-scheme:dark){:root{--bg:#111;--fg:#eee;--card:#1d1d1d;--bd:#444}}
+body{font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg);padding:20px;max-width:640px;margin:auto;line-height:1.45}
+h1{margin:.2em 0}h2{font-size:1.05em;margin:0}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin:10px 0}
+button,input{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);margin:4px 0}
+input{width:100%;box-sizing:border-box}
+pre{white-space:pre-wrap;word-break:break-word;overflow-x:auto;margin:8px 0 0}
+a{color:#06c}
+</style></head><body>
+<h1>ITS Files</h1>
+<p>For Inside The System players on iOS (iPhone / iPad) or anyone without the Android ITS Helper app. The game cannot open this page by itself: open a file here <b>only when the game tells you to</b>. Files contain story spoilers.</p>
+<p>Nothing is sent anywhere. Everything runs in your browser and your name stays on your device.</p>
+<div class="card"><h2>Your details (used in the letter and report)</h2>
+<input id="p" placeholder="Your player name" autocomplete="off">
+<input id="t" placeholder="Time together (e.g. 3 days)" autocomplete="off"></div>
+<div id="list"></div>
+<div class="card"><h2>Untitled - Paint</h2><p>The drawing page from the app.</p><a href="paint.html">Open Paint</a></div>
+<script>
+const F={"letter_from_aiko.en": "Hello, {player}.\n\nI'm writing this because I'm scared. I feel like the System is watching every step I take.\nWe've been together for {time} now, and you're the only one I can trust.\n\nI found some strange fragments in my memory... someone named ShadowEnderman666.\nIf you're reading this, it means I might be losing myself again.\n\nPlease, don't let them take me back into the void.\n\n                    Yours, Aiko\n\n──────────────────────────────────────────\nSYSTEM ERROR: FILE_CORRUPTION_DETECTED\n", "letter_from_aiko.ru": "Привет, {player}.\n\nЯ пишу это, потому что мне страшно. Я чувствую, что Система следит за каждым моим шагом.\nМы вместе уже {time}, и ты единственный, кому я могу доверять.\n\nЯ нашла какие-то странные фрагменты в своей памяти... кто-то по имени ShadowEnderman666.\nЕсли ты читаешь это, значит, я могу снова потерять себя.\n\nПожалуйста, не дай им забрать меня обратно в пустоту.\n\n                    Твоя Айко\n\n──────────────────────────────────────────\nSYSTEM ERROR: FILE_CORRUPTION_DETECTED\n", "report.en": "SUBJECT ASSESSMENT REPORT\nSubject ID: {player}\nSession Uptime: {time}\nSystem: {device} / {android}\nLocation: {country}, {city} ({timezone})\nBattery: {battery}\n\nBEHAVIORAL ANALYSIS:\n- Shows affinity for: Communication, Gaming, Web Browsing\n- Active focus: Minecraft, Discord\n- Information gathering: youtube.com, minecraft.net, wiki.gg\n- Defensive measures: Ad-blocking, Privacy\n\nCONCLUSION:\nThe subject demonstrates typical coping mechanisms. Integration progressing at expected rate. Memory suppression remains active. Proceed with Act II protocols.\n", "Key_config": "00101101 00101110 00101110 00101110 00100000 00101101 00101110 00101101 00101101 00100000 00101111 00100000 00101101 00101110 00101101 00100000 00101110 00101110 00101101 00100000 00101110 00101101 00101110 00100000 00101101 00101101 00101101 00100000 00101101 00101110 00101101 00100000 00101110 00101101 00100000 00101110 00101101 00101101 00100000 00101110 00101101 00100000 00101111 00100000 00101110 00101101 00101110 00100000 00101110 00100000 00101110 00101110 00100000 00101101 00100000 00101101 00101101 00101101 00100000 00101111 00100000 00101101 00101101 00101101 00100000 00101101 00101110", "Key_logs": "49 55 47 56 47 50 48 49 51", "Key_root": "Qoqdqcy Qyae mqi aybbut", "ending_Acceptance": "T5@yH7*gK4!nJ8$d - Acceptance", "ending_Betrayal": "7H#j9K!p2@Qm5*W - Betrayal", "ending_Thank_You": "An image of Aiko smiling..."};
+const L={"letter_from_aiko.en": "Letter from Aiko (English)", "letter_from_aiko.ru": "Письмо от Айко (Русский)", "report.en": "Report", "Key_config": "Key_config.txt", "Key_logs": "Key_logs.txt", "Key_root": "Key_root.txt", "ending_Acceptance": "Ending: Acceptance", "ending_Betrayal": "Ending: Betrayal", "ending_Thank_You": "Ending: Thank You"};
+const FAKE={device:"Unknown device",android:"Unknown OS",country:"Unknown",city:"Unknown",timezone:"Unknown",battery:"Unknown"};
+const $=id=>document.getElementById(id);
+function fill(s){const v=Object.assign({player:$("p").value||"Player",time:$("t").value||"some time"},FAKE);return s.replace(/\{(\w+)\}/g,(m,k)=>k in v?v[k]:m)}
+try{$("p").value=localStorage.getItem("its_p")||"";$("t").value=localStorage.getItem("its_t")||""}catch(e){}
+["p","t"].forEach(i=>$(i).addEventListener("input",()=>{try{localStorage.setItem("its_"+i,$(i).value)}catch(e){}}));
+const list=$("list");
+Object.keys(F).forEach(k=>{
+  const c=document.createElement("div");c.className="card";
+  const h=document.createElement("h2");h.textContent=L[k];
+  const b=document.createElement("button");b.textContent="Open (spoiler)";
+  const pre=document.createElement("pre");pre.hidden=true;
+  b.onclick=()=>{if(pre.hidden){pre.textContent=fill(F[k]);pre.hidden=false;b.textContent="Hide"}else{pre.hidden=true;b.textContent="Open (spoiler)"}};
+  c.append(h,b,pre);list.append(c);
+});
+</script></body></html>

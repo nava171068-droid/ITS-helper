@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Untitled - Paint</title>
+<style>
+  :root { --title:#0066cc; --frame:#404040; --bg:#808080; --bar:#c8c8c8; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; overflow:hidden; overscroll-behavior:none; }
+  #win { position:fixed; inset:0; display:flex; flex-direction:column; background:var(--frame); padding:2px; }
+  #titlebar { height:34px; flex:none; background:var(--title); color:#fff; display:flex; align-items:center; padding:0 10px; font-size:14px; gap:8px; user-select:none; }
+  #titlebar .ico { width:14px; height:14px; background:#fff; border-radius:3px; opacity:.9; }
+  #titlebar .sp { flex:1; }
+  #titlebar button { all:unset; width:30px; height:24px; text-align:center; line-height:24px; color:#fff; font-size:13px; }
+  #stage { position:relative; flex:1; background:#fff; min-height:0; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; touch-action:none; display:block; }
+  #tools { flex:none; background:var(--bar); display:flex; align-items:center; gap:6px; padding:6px 8px; overflow-x:auto; border-top:2px solid var(--frame); }
+  #tools .sw { flex:none; width:30px; height:30px; border:2px solid #444; border-radius:4px; }
+  #tools .sw.on { outline:3px solid #0078cc; outline-offset:1px; }
+  #tools button, #tools input[type=range] { flex:none; }
+  #tools button { font:inherit; font-size:13px; padding:6px 10px; border:2px solid #444; background:#f0f0f0; border-radius:4px; color:#111; }
+  #tools button.on { background:#cfe6ff; }
+  #tools input[type=range] { width:90px; }
+  #tools .div { width:2px; align-self:stretch; background:#999; flex:none; }
+</style>
+</head>
+<body>
+<div id="win">
+  <div id="titlebar"><span class="ico"></span><span id="ttl">Untitled - Paint</span><span class="sp"></span><button id="min" aria-label="minimize">&#8211;</button><button id="cls" aria-label="close">&#10005;</button></div>
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="tools">
+    <div class="sw on" data-c="#000000" style="background:#000"></div>
+    <div class="sw" data-c="#cc0000" style="background:#c00"></div>
+    <div class="sw" data-c="#0050e0" style="background:#0050e0"></div>
+    <div class="sw" data-c="#00a000" style="background:#0a0"></div>
+    <div class="sw" data-c="#f0c800" style="background:#f0c800"></div>
+    <div class="sw" data-c="#ffffff" style="background:#fff"></div>
+    <input id="sz" type="range" min="1" max="30" value="4" aria-label="brush size">
+    <div class="div"></div>
+    <button id="undo">Undo</button>
+    <button id="clear">Clear</button>
+    <button id="save">Save PNG</button>
+    <button id="replay">Replay</button>
+  </div>
+</div>
+<script>
+(() => {
+  'use strict';
+  // Port of the original mod's SmileyDrawingScreen: a fake "Untitled - Paint" window draws a smiley with red eyes and the word "Hello" all by itself
+  // (3 points per game tick = 60 points per second). Afterwards the canvas is a normal little paint program, so the phone does not need any paint app.
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  const stage = document.getElementById('stage');
+  const BLACK = '#000000', RED = '#cc0000';
+  let W = 0, H = 0, dpr = 1;
+  let points = [], idx = 0, complete = false, autoRunning = false, timer = 0, base = null;
+  let color = '#000000', size = 4;
+  const snaps = [];   // undo stack (ImageData)
+
+  function resize() {
+    const keep = (W && H) ? ctx.getImageData(0, 0, cv.width, cv.height) : null;
+    dpr = Math.max(1, window.devicePixelRatio || 1);
+    W = stage.clientWidth; H = stage.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    if (keep) ctx.putImageData(keep, 0, 0);
+  }
+
+  // ---- the original point list (addCircle / addArc / addLine), scaled to the canvas
+  function build() {
+    points = [];
+    const m = Math.min(W, H), radius = m / 3.2, k = radius / 47;   // 47 = the original radius on a 480x270 GUI
+    const cx = W / 2, cy = H / 2 - 20 * k;
+    const circle = (x, y, r, c, step) => { for (let a = 0, f = true; a <= 360; a += step, f = false) { const t = a * Math.PI / 180; points.push({ x: Math.trunc(x + Math.cos(t) * r), y: Math.trunc(y + Math.sin(t) * r), c, s: f }); } };
+    const arc = (x, y, r, a0, a1, c, step) => { for (let a = a0, f = true; a <= a1; a += step, f = false) { const t = a * Math.PI / 180; points.push({ x: Math.trunc(x + Math.cos(t) * r), y: Math.trunc(y + Math.sin(t) * r), c, s: f }); } };
+    const line = (x1, y1, x2, y2, c) => { for (let i = 0; i <= 15; i++) points.push({ x: Math.trunc(x1 + (x2 - x1) * i / 15), y: Math.trunc(y1 + (y2 - y1) * i / 15), c, s: i === 0 }); };
+    circle(cx, cy, radius, BLACK, 3);
+    const ex = radius / 3, ey = radius / 4, er = radius / 6;
+    circle(cx - ex, cy - ey, er, BLACK, 5); circle(cx + ex, cy - ey, er, BLACK, 5);
+    for (let r = er - 2 * k; r > 0; r -= 3 * k) circle(cx - ex, cy - ey, r, RED, 6);
+    for (let r = er - 2 * k; r > 0; r -= 3 * k) circle(cx + ex, cy - ey, r, RED, 6);
+    arc(cx, cy + ey / 2, radius * 0.6, 20, 160, BLACK, 3);
+    // "Hello"
+    const ty = cy + radius + 30 * k; let tx = cx - 50 * k;
+    line(tx, ty, tx, ty + 20 * k, BLACK); line(tx, ty + 10 * k, tx + 10 * k, ty + 10 * k, BLACK); line(tx + 10 * k, ty, tx + 10 * k, ty + 20 * k, BLACK);   // H
+    tx += 16 * k;
+    line(tx, ty + 10 * k, tx + 8 * k, ty + 10 * k, BLACK); line(tx, ty + 10 * k, tx, ty + 20 * k, BLACK); line(tx, ty + 20 * k, tx + 8 * k, ty + 20 * k, BLACK); line(tx + 8 * k, ty + 20 * k, tx + 8 * k, ty + 15 * k, BLACK);   // e
+    tx += 14 * k; line(tx, ty, tx, ty + 20 * k, BLACK);   // l
+    tx += 8 * k; line(tx, ty, tx, ty + 20 * k, BLACK);    // l
+    tx += 10 * k; circle(tx + 5 * k, ty + 15 * k, 5 * k, BLACK, 6);   // o
+    build.k = k; build.cx = cx; build.cy = cy; build.ex = ex; build.ey = ey;
+  }
+
+  function dot(p, k) { const d = Math.max(2, 2 * k); ctx.fillStyle = p.c; ctx.fillRect(p.x - d / 2, p.y - d / 2, d, d); }
+  function eyes(on) {   // the red squares that blink over the eyes once the drawing is finished
+    const k = build.k, ox = build.ex, oy = build.ey, s = 6 * k;   // centred on the eyes
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(build.cx - ox - s / 2, build.cy - oy - s / 2, s, s); ctx.fillRect(build.cx + ox - s / 2, build.cy - oy - s / 2, s, s);
+  }
+  function startAuto() {
+    clearInterval(timer);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    build(); idx = 0; complete = false; autoRunning = true; let ticks = 0;
+    timer = setInterval(() => {   // 50 ms = one game tick
+      ticks++;
+      if (idx < points.length) { const to = Math.min(idx + 3, points.length); for (; idx < to; idx++) dot(points[idx], build.k); }
+      if (idx >= points.length) {
+        if (!complete) { complete = true; ticks = 0; base = ctx.getImageData(0, 0, cv.width, cv.height); }
+        if (Math.floor(ticks / 5) % 3 === 0) eyes(true); else if (base) ctx.putImageData(base, 0, 0);
+        if (ticks > 60) { autoRunning = false; clearInterval(timer); eyes(true); snaps.length = 0; snaps.push(ctx.getImageData(0, 0, cv.width, cv.height)); }   // after 3 s the drawing is left as it is
+      }
+    }, 50);
+  }
+
+  // ---- drawing with the finger / mouse
+  let down = false, last = null;
+  const pos = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  function pushUndo() { try { snaps.push(ctx.getImageData(0, 0, cv.width, cv.height)); if (snaps.length > 20) snaps.shift(); } catch (_) {} }
+  cv.addEventListener('pointerdown', (e) => {
+    if (autoRunning) { clearInterval(timer); autoRunning = false; eyes(true); }
+    down = true; last = pos(e); cv.setPointerCapture(e.pointerId); pushUndo();
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(last.x, last.y, size / 2, 0, 7); ctx.fill(); e.preventDefault();
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!down) return; const p = pos(e);
+    ctx.strokeStyle = color; ctx.lineWidth = size; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; e.preventDefault();
+  });
+  const up = () => { down = false; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+
+  // ---- toolbar
+  document.querySelectorAll('.sw').forEach((el) => el.addEventListener('click', () => {
+    document.querySelectorAll('.sw').forEach((o) => o.classList.remove('on')); el.classList.add('on'); color = el.dataset.c;
+  }));
+  document.getElementById('sz').addEventListener('input', (e) => { size = +e.target.value; });
+  document.getElementById('undo').addEventListener('click', () => { const s = snaps.pop(); if (s) ctx.putImageData(s, 0, 0); });
+  document.getElementById('clear').addEventListener('click', () => { clearInterval(timer); autoRunning = false; pushUndo(); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); });
+  document.getElementById('replay').addEventListener('click', startAuto);
+  document.getElementById('save').addEventListener('click', () => {
+    if (window.ITSApp) { ITSApp.savePng(cv.toDataURL('image/png')); return; }
+    const a = document.createElement('a'); a.download = 'Untitled.png'; a.href = cv.toDataURL('image/png'); document.body.appendChild(a); a.click(); a.remove();
+  });
+  document.getElementById('cls').addEventListener('click', () => { if (window.ITSApp) { ITSApp.close(); return; } try { window.close(); } catch (_) {} setTimeout(() => { history.length > 1 ? history.back() : (document.body.style.background = '#000'); }, 150); });
+  document.getElementById('min').addEventListener('click', () => { if (window.ITSApp) { ITSApp.close(); return; } try { window.close(); } catch (_) {} });
+
+  window.addEventListener('resize', () => { if (!autoRunning) resize(); });
+  resize(); startAuto();
+})();
+</script>
+</body>
+</html>
